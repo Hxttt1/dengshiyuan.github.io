@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>等时圆演示教具及数据可视化辅助验证</title>
+
+<style>
+    body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        background: #0b1f3a;
+        color: #ffffff;
+    }
+
+    header {
+        text-align: center;
+        padding: 15px;
+        font-size: 22px;
+        background: #0f2d5c;
+    }
+
+    .container {
+        display: flex;
+        height: 80vh;
+    }
+
+    .main {
+        flex: 3;
+        display: flex;
+        flex-direction: column;
+        padding: 10px;
+    }
+
+    .canvas-box {
+        flex: 1;
+        background: #122c54;
+        border-radius: 10px;
+        position: relative;
+    }
+
+    canvas {
+        width: 100%;
+        height: 100%;
+    }
+
+    .controls {
+        height: 120px;
+        margin-top: 10px;
+        background: #0f2d5c;
+        border-radius: 10px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .slider-group {
+        display: inline-block;
+        margin-right: 20px;
+    }
+
+    .sidebar {
+        flex: 1;
+        padding: 10px;
+    }
+
+    .chart-box {
+        background: #122c54;
+        height: 100%;
+        border-radius: 10px;
+    }
+
+    button {
+        background: #1e4fa3;
+        border: none;
+        color: white;
+        padding: 8px 15px;
+        margin: 5px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+</style>
+</head>
+
+<body>
+
+<header>
+等时圆演示教具及数据可视化辅助验证
+</header>
+
+<div class="container">
+
+    <!-- 中间主区域 -->
+    <div class="main">
+
+        <div class="canvas-box">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <!-- 控制栏 -->
+        <div class="controls" id="controls"></div>
+
+        <button onclick="startSimulation()">开始</button>
+        <button onclick="resetSimulation()">重置</button>
+
+    </div>
+
+    <!-- 右侧图表 -->
+    <div class="sidebar">
+        <div class="chart-box">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = canvas.clientWidth;
+canvas.height = canvas.clientHeight;
+
+let angles = [20, 40, 60, 80];
+let balls = [];
+let running = false;
+let time = 0;
+
+// 生成滑块
+const controlsDiv = document.getElementById("controls");
+
+function createSliders() {
+    controlsDiv.innerHTML = "";
+    angles.forEach((angle, i) => {
+        let div = document.createElement("div");
+        div.className = "slider-group";
+
+        div.innerHTML = `
+            <label>角度 ${i+1}: <span id="val${i}">${angle}</span>°</label><br>
+            <input type="range" min="10" max="90" value="${angle}" 
+            oninput="updateAngle(${i}, this.value)">
+        `;
+
+        controlsDiv.appendChild(div);
+    });
+}
+
+function updateAngle(i, val) {
+    angles[i] = Number(val);
+    document.getElementById("val"+i).innerText = val;
+}
+
+// 初始化小球
+function initBalls() {
+    balls = angles.map(a => ({
+        theta: a * Math.PI / 180,
+        t: 0,
+        finished: false,
+        totalTime: 0
+    }));
+}
+
+function cycloid(t, R=100) {
+    return {
+        x: R * (t - Math.sin(t)),
+        y: R * (1 - Math.cos(t))
+    };
+}
+
+// 绘制
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    let R = 100;
+    let offsetX = canvas.width/2 - 150;
+    let offsetY = 50;
+
+    // 画轨道
+    ctx.strokeStyle = "#88aaff";
+    ctx.beginPath();
+    for(let t=0;t<Math.PI;t+=0.01){
+        let p = cycloid(t,R);
+        ctx.lineTo(p.x+offsetX, p.y+offsetY);
+    }
+    ctx.stroke();
+
+    // 画球
+    balls.forEach((b,i)=>{
+        if(!b.finished && running){
+            b.t += 0.02;
+            b.totalTime += 0.02;
+            if(b.t >= Math.PI){
+                b.finished = true;
+            }
+        }
+
+        let p = cycloid(b.t,R);
+
+        ctx.beginPath();
+        ctx.arc(p.x+offsetX, p.y+offsetY, 6, 0, Math.PI*2);
+        ctx.fillStyle = `hsl(${i*60}, 70%, 60%)`;
+        ctx.fill();
+    });
+}
+
+// 动画循环
+function animate(){
+    draw();
+    if(running){
+        requestAnimationFrame(animate);
+    }
+}
+
+// 控制
+function startSimulation(){
+    running = true;
+    animate();
+}
+
+function resetSimulation(){
+    running = false;
+    initBalls();
+    updateChart();
+    draw();
+}
+
+// 图表
+const chartCtx = document.getElementById("chart").getContext("2d");
+
+let chart = new Chart(chartCtx, {
+    type: 'scatter',
+    data: {
+        datasets: [{
+            label: '到达时间',
+            data: [],
+        }]
+    },
+    options: {
+        scales: {
+            x: { title: { display: true, text: '轨道编号'}},
+            y: { title: { display: true, text: '时间'} }
+        }
+    }
+});
+
+function updateChart(){
+    let data = balls.map((b,i)=>({
+        x: i+1,
+        y: b.totalTime
+    }));
+
+    chart.data.datasets[0].data = data;
+    chart.update();
+}
+
+// 初始化
+createSliders();
+initBalls();
+draw();
+
+</script>
+
+</body>
+</html>
